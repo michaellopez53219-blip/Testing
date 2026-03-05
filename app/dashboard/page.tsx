@@ -49,12 +49,14 @@ export default function Dashboard() {
   useEffect(() => { fetchServers(); }, []);
   useEffect(() => { if (isModalOpen) fetchDiscordGuilds(); }, [isModalOpen, session]);
 
-  const handleCreateServer = async () => {
+const handleCreateServer = async () => {
     if (!newServerName.trim()) return;
     setIsCreating(true);
 
+    console.log("🚀 Attempting to create server:", { newServerName, selectedDiscordId });
+
     try {
-      const { data, error } = await supabase
+      const { data, error, status, statusText } = await supabase
         .from("user_servers")
         .insert([{ 
           server_name: newServerName, 
@@ -63,24 +65,28 @@ export default function Dashboard() {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        // This is the "Bug Code" block
+        console.error("❌ SUPABASE ERROR DETECTED:");
+        console.error("Status:", status);
+        console.error("Status Text:", statusText);
+        console.dir(error); // This lets you click and expand the error in the console
+        throw error;
+      }
 
+      console.log("✅ Success! Server created:", data);
       setIsModalOpen(false);
       setNewServerName("");
       setSelectedDiscordId("");
       fetchServers();
-      
-      // If you have the [id] folder ready, you can uncomment this:
-      // router.push(`/dashboard/${data.id}`);
 
     } catch (err: any) {
-      console.error("Error:", err.message);
-      alert("Failed to create server. Check if your Supabase table has RLS policies enabled.");
+      // Detailed Alert for you
+      alert(`BUG DETECTED!\nCode: ${err.code || 'Unknown'}\nMessage: ${err.message}`);
     } finally {
       setIsCreating(false);
     }
   };
-
   return (
     <div className="min-h-screen bg-[#0f0f10] text-white p-8 font-sans">
       <header className="mb-10">
