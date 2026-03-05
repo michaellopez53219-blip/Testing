@@ -26,7 +26,7 @@ export default function Dashboard() {
   };
 
   const fetchDiscordGuilds = async () => {
-    // @ts-ignore - Ignore the accessToken type error for now
+    // @ts-ignore
     if (!session?.accessToken) return;
     setLoadingGuilds(true);
     try {
@@ -35,7 +35,6 @@ export default function Dashboard() {
         headers: { Authorization: `Bearer ${session.accessToken}` },
       });
       const guilds = await res.json();
-      // Filter for servers where user has Admin permissions
       const adminGuilds = guilds.filter((guild: any) => 
         guild.owner || (BigInt(guild.permissions) & BigInt(0x8)) === BigInt(0x8)
       );
@@ -66,26 +65,24 @@ export default function Dashboard() {
 
       if (error) throw error;
 
-      // Reset and Close
       setIsModalOpen(false);
       setNewServerName("");
       setSelectedDiscordId("");
-      
-      // Refresh list or redirect
       fetchServers();
-      // Uncomment the line below to go straight to the new server's panel:
+      
+      // If you have the [id] folder ready, you can uncomment this:
       // router.push(`/dashboard/${data.id}`);
 
     } catch (err: any) {
       console.error("Error:", err.message);
-      alert("Failed to create server.");
+      alert("Failed to create server. Check if your Supabase table has RLS policies enabled.");
     } finally {
       setIsCreating(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#0f0f10] text-white p-8">
+    <div className="min-h-screen bg-[#0f0f10] text-white p-8 font-sans">
       <header className="mb-10">
         <h1 className="text-3xl font-bold italic tracking-tighter underline decoration-blue-600">PROJECT: DASHBOARD</h1>
       </header>
@@ -93,7 +90,7 @@ export default function Dashboard() {
       {/* SERVER CARDS GRID */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {servers.map((server) => (
-          <div key={server.id} className="bg-[#18181b] rounded-2xl overflow-hidden border border-slate-800 p-5 hover:border-blue-500/50 transition-all group">
+          <div key={server.id} className="bg-[#18181b] rounded-2xl overflow-hidden border border-slate-800 p-5 hover:border-blue-500/50 transition-all group shadow-xl">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center font-bold uppercase shadow-lg shadow-blue-900/20">
                 {server.server_name?.charAt(0)}
@@ -108,42 +105,41 @@ export default function Dashboard() {
           </div>
         ))}
 
-        {/* ADD NEW BUTTON */}
         <button 
           onClick={() => setIsModalOpen(true)} 
           className="border-2 border-dashed border-slate-800 rounded-2xl p-10 text-slate-500 hover:text-blue-400 hover:border-blue-400/50 transition-all flex flex-col items-center gap-2"
         >
-          <span className="text-2xl">+</span>
+          <span className="text-2xl text-blue-500">+</span>
           <span className="font-semibold text-sm">Add New Server</span>
         </button>
       </div>
 
       {/* CREATE SERVER MODAL */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
-          <div className="bg-[#0f0f10] border border-slate-800 w-full max-w-2xl rounded-2xl p-8 space-y-6 animate-in fade-in zoom-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+          <div className="bg-[#0f0f10] border border-slate-800 w-full max-w-2xl rounded-2xl p-8 space-y-6 shadow-2xl scale-in-center">
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-bold tracking-tight">Create New Server</h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-500 hover:text-white">✕</button>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-500 hover:text-white transition-colors">✕</button>
             </div>
 
             <div className="space-y-4">
-              {/* SERVER NAME INPUT */}
               <div>
                 <label className="text-sm font-semibold text-slate-400">Server Name *</label>
                 <input 
                   placeholder="Give your server a unique name"
-                  className="w-full bg-[#161618] border border-slate-800 rounded-xl p-4 mt-2 focus:border-blue-500 outline-none transition"
+                  className="w-full bg-[#161618] border border-slate-800 rounded-xl p-4 mt-2 focus:border-blue-500 outline-none transition-all placeholder:text-slate-700"
                   value={newServerName}
                   onChange={(e) => setNewServerName(e.target.value)}
                 />
               </div>
 
-              {/* DISCORD LINKER SECTION */}
               <div>
                 <label className="text-sm font-semibold text-slate-400">Link Your Discord Server <span className="text-xs font-normal opacity-50">(optional)</span></label>
                 <div className="mt-3 space-y-2 max-h-56 overflow-y-auto pr-2 custom-scrollbar">
-                  {discordServers.length > 0 ? (
+                  {loadingGuilds ? (
+                    <div className="text-center py-6 text-slate-600 animate-pulse text-sm">Fetching your servers...</div>
+                  ) : discordServers.length > 0 ? (
                     discordServers.map((guild) => (
                       <div 
                         key={guild.id}
@@ -168,11 +164,10 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* CONTINUE BUTTON */}
               <button 
                 onClick={handleCreateServer}
-                disabled={isCreating}
-                className="w-full bg-blue-600 font-bold py-4 rounded-xl hover:bg-blue-500 transition-all shadow-lg shadow-blue-600/20 disabled:opacity-50"
+                disabled={isCreating || !newServerName.trim()}
+                className="w-full bg-blue-600 font-bold py-4 rounded-xl hover:bg-blue-500 transition-all shadow-lg shadow-blue-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isCreating ? "Creating..." : "Continue"}
               </button>
