@@ -1,85 +1,183 @@
 "use client";
 import { useEffect, useState } from "react";
-import { supabase } from "./lib/supabase"; // Updated path based on your folder image
+import { supabase } from "../lib/supabase";
 import { useSession } from "next-auth/react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 export default function Dashboard() {
   const { data: session } = useSession();
+  const router = useRouter();
+  
+  // App States
   const [servers, setServers] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newServerName, setNewServerName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
 
+  // Discord States
+  const [discordServers, setDiscordServers] = useState<any[]>([]);
+  const [loadingGuilds, setLoadingGuilds] = useState(false);
+  const [selectedDiscordId, setSelectedDiscordId] = useState("");
+
   const fetchServers = async () => {
-    const { data, error } = await supabase.from("user_servers").select("*");
+    const { data } = await supabase.from("user_servers").select("*");
     if (data) setServers(data);
-    if (error) console.error("Fetch Error:", error.message);
+  };
+
+  const fetchDiscordGuilds = async () => {
+    // @ts-ignore
+    if (!session?.accessToken) return;
+    setLoadingGuilds(true);
+    try {
+      const res = await fetch("https://discord.com/api/users/@me/guilds", {
+        // @ts-ignore
+        headers: { Authorization: `Bearer ${session.accessToken}` },
+      });
+      const guilds = await res.json();
+      const adminGuilds = guilds.filter((guild: any) => 
+        guild.owner || (BigInt(guild.permissions) & BigInt(0x8)) === BigInt(0x8)
+      );
+      setDiscordServers(adminGuilds);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingGuilds(false);
+    }
   };
 
   useEffect(() => { fetchServers(); }, []);
+  useEffect(() => { if (isModalOpen) fetchDiscordGuilds(); }, [isModalOpen, session]);
 
-  const handleCreateServer = async () => {
+const handleCreateServer = async () => {
     if (!newServerName.trim()) return;
     setIsCreating(true);
 
+    console.log("🚀 Attempting to create server:", { newServerName, selectedDiscordId });
+
     try {
-      const { data, error } = await supabase
+      const { data, error, status, statusText } = await supabase
         .from("user_servers")
-        .insert([{ server_name: newServerName }])
-        .select();
+        .insert([{ 
+          server_name: newServerName, 
+          discord_id: selectedDiscordId 
+        }])
+        .select()
+        .single();
 
-      if (error) throw error;
+      if (error) {
+        // This is the "Bug Code" block
+        console.error("❌ SUPABASE ERROR DETECTED:");
+        console.error("Status:", status);
+        console.error("Status Text:", statusText);
+        console.dir(error); // This lets you click and expand the error in the console
+        throw error;
+      }
 
-      alert("Success! Server Created.");
+      console.log("✅ Success! Server created:", data);
       setIsModalOpen(false);
       setNewServerName("");
+      setSelectedDiscordId("");
       fetchServers();
+
     } catch (err: any) {
-      // THE BUG FINDER
-      alert(`DATABASE ERROR:\nCode: ${err.code}\nMessage: ${err.message}`);
-      console.error(err);
+      // Detailed Alert for you
+      alert(`BUG DETECTED!\nCode: ${err.code || 'Unknown'}\nMessage: ${err.message}`);
     } finally {
       setIsCreating(false);
     }
   };
-
   return (
-    <div className="min-h-screen bg-[#0f0f10] text-white p-8">
-      <h1 className="text-3xl font-bold mb-8 underline decoration-blue-600">PROJECT: DASHBOARD</h1>
-      
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {servers.map((s) => (
-          <div key={s.id} className="bg-[#18181b] p-6 rounded-2xl border border-slate-800">
-            <h3 className="font-bold text-xl">{s.server_name}</h3>
+    <div className="min-h-screen bg-[#0f0f10] text-white p-8 font-sans">
+      <header className="mb-10">
+        <h1 className="text-3xl font-bold italic tracking-tighter underline decoration-blue-600">PROJECT: DASHBOARD</h1>
+      </header>
+
+      {/* SERVER CARDS GRID */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {servers.map((server) => (
+          <div key={server.id} className="bg-[#18181b] rounded-2xl overflow-hidden border border-slate-800 p-5 hover:border-blue-500/50 transition-all group shadow-xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center font-bold uppercase shadow-lg shadow-blue-900/20">
+                {server.server_name?.charAt(0)}
+              </div>
+              <h3 className="font-bold text-lg">{server.server_name}</h3>
+            </div>
+            <Link href={`/dashboard/${server.id}`}>
+              <button className="w-full bg-[#1e293b] hover:bg-blue-600 py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2">
+                ⚡ Quick Access
+              </button>
+            </Link>
           </div>
         ))}
-        
+
         <button 
-          onClick={() => setIsModalOpen(true)}
-          className="border-2 border-dashed border-slate-800 rounded-2xl p-10 text-slate-500 hover:border-blue-500 hover:text-blue-500 transition-all"
+          onClick={() => setIsModalOpen(true)} 
+          className="border-2 border-dashed border-slate-800 rounded-2xl p-10 text-slate-500 hover:text-blue-400 hover:border-blue-400/50 transition-all flex flex-col items-center gap-2"
         >
-          + Add New Server
+          <span className="text-2xl text-blue-500">+</span>
+          <span className="font-semibold text-sm">Add New Server</span>
         </button>
       </div>
 
+      {/* CREATE SERVER MODAL */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50">
-          <div className="bg-[#0f0f10] border border-slate-800 p-8 rounded-2xl w-full max-w-md">
-            <h2 className="text-2xl font-bold mb-4">Create Server</h2>
-            <input 
-              className="w-full bg-[#161618] border border-slate-800 p-4 rounded-xl mb-4 outline-none focus:border-blue-500"
-              placeholder="Server Name"
-              value={newServerName}
-              onChange={(e) => setNewServerName(e.target.value)}
-            />
-            <button 
-              onClick={handleCreateServer}
-              disabled={isCreating}
-              className="w-full bg-blue-600 py-4 rounded-xl font-bold hover:bg-blue-500 transition-all"
-            >
-              {isCreating ? "Connecting to Database..." : "Continue"}
-            </button>
-            <button onClick={() => setIsModalOpen(false)} className="w-full mt-2 text-slate-500 text-sm">Cancel</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+          <div className="bg-[#0f0f10] border border-slate-800 w-full max-w-2xl rounded-2xl p-8 space-y-6 shadow-2xl scale-in-center">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-bold tracking-tight">Create New Server</h2>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-500 hover:text-white transition-colors">✕</button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-semibold text-slate-400">Server Name *</label>
+                <input 
+                  placeholder="Give your server a unique name"
+                  className="w-full bg-[#161618] border border-slate-800 rounded-xl p-4 mt-2 focus:border-blue-500 outline-none transition-all placeholder:text-slate-700"
+                  value={newServerName}
+                  onChange={(e) => setNewServerName(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold text-slate-400">Link Your Discord Server <span className="text-xs font-normal opacity-50">(optional)</span></label>
+                <div className="mt-3 space-y-2 max-h-56 overflow-y-auto pr-2 custom-scrollbar">
+                  {loadingGuilds ? (
+                    <div className="text-center py-6 text-slate-600 animate-pulse text-sm">Fetching your servers...</div>
+                  ) : discordServers.length > 0 ? (
+                    discordServers.map((guild) => (
+                      <div 
+                        key={guild.id}
+                        onClick={() => setSelectedDiscordId(guild.id)}
+                        className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer border-2 transition-all ${
+                          selectedDiscordId === guild.id 
+                            ? "border-emerald-500 bg-emerald-500/10" 
+                            : "border-slate-800 bg-[#161618] hover:border-slate-700"
+                        }`}
+                      >
+                        {guild.icon ? (
+                          <img src={`https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png`} className="w-8 h-8 rounded-full shadow-md" alt="" />
+                        ) : (
+                          <div className="w-8 h-8 bg-slate-700 rounded-full flex items-center justify-center text-[10px] font-bold">{guild.name.charAt(0)}</div>
+                        )}
+                        <span className="text-sm font-medium">{guild.name}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-slate-600 py-4 text-center">No servers found or Discord not linked.</p>
+                  )}
+                </div>
+              </div>
+
+              <button 
+                onClick={handleCreateServer}
+                disabled={isCreating || !newServerName.trim()}
+                className="w-full bg-blue-600 font-bold py-4 rounded-xl hover:bg-blue-500 transition-all shadow-lg shadow-blue-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isCreating ? "Creating..." : "Continue"}
+              </button>
+            </div>
           </div>
         </div>
       )}
